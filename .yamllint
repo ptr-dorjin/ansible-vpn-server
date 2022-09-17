@@ -1,0 +1,11 @@
+---
+extends: default
+
+rules:
+  truthy: disable
+  line-length:
+    max: 120
+
+ignore: |
+  roles/
+  molecule/

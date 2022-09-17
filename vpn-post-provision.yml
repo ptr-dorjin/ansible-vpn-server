@@ -1,0 +1,12 @@
+---
+- name: Import CA cert to VPN
+  import_playbook: import-ca-cert-to-vpn.yml
+
+- name: Sign server cert
+  import_playbook: sign-cert-server.yml
+
+- name: Start OpenVPN server
+  import_playbook: start-openvpn-service.yml
+
+- name: Create client config infra
+  import_playbook: create-client-config-infra.yml

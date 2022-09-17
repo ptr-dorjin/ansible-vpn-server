@@ -1,0 +1,147 @@
+---
+- name: Install OpenVPN
+  become: yes
+  apt:
+    name: openvpn
+    state: present
+
+# Step 7
+- name: Check if OpenVPN config is already present
+  stat:
+    path: "{{ vpn_config_path }}"
+  register: openvpn_config
+
+- name: Register variable whether the OpenVPN config is already present
+  set_fact:
+    need_to_create_config: "{{ not openvpn_config.stat.exists }}"
+
+- name: Register variable - whether example config is remote or local
+  set_fact:
+    is_remote_example: "{{ openvpn_remote_example_config | default('yes') }}"
+
+- name: Create config file from template. Option 1 - unzipped
+  become: yes
+  copy:
+    remote_src: "{{ is_remote_example }}"
+    src: "{{ vpn_example_server_config_path }}"
+    dest: /etc/openvpn/server/
+    mode: 0644
+  when: need_to_create_config
+  ignore_errors: yes
+
+- name: Create config file from template. Option 2 - zipped
+  become: yes
+  copy:
+    remote_src: "{{ is_remote_example }}"
+    src: "{{ vpn_example_server_config_path_zipped }}"
+    dest: /etc/openvpn/server/
+    mode: 0644
+  when: need_to_create_config
+  ignore_errors: yes
+
+- name: Check whether example config is zipped
+  stat:
+    path: "{{ vpn_example_server_config_path_zipped }}"
+  register: example_server_config_zipped
+  when: not openvpn_config.stat.exists
+
+- name: Unpack config
+  become: yes
+  command: gunzip /etc/openvpn/server/server.conf.gz
+  when: need_to_create_config and example_server_config_zipped.stat.exists
+
+- name: Configure OpenVPN
+  become: yes
+  lineinfile:
+    dest: "{{ vpn_config_path }}"
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line | default('') }}"
+    state: "{{ item.state | default('present') }}"
+  loop:
+    - regexp: "^tls-auth "
+      state: absent
+    - regexp: "^tls-crypt "
+      line: "tls-crypt ta.key"
+    - regexp: "^cipher "
+      line: "cipher AES-256-GCM"
+    - regexp: "^auth "
+      line: "auth SHA256"
+    - regexp: "^dh "
+      line: "dh none"
+    - regexp: "^user nobody"
+      line: "user nobody"
+    - regexp: "^group nogroup"
+      line: "group nogroup"
+    - regexp: "^push \"redirect-gateway def1 bypass-dhcp\""
+      line: "push \"redirect-gateway def1 bypass-dhcp\""
+    - regexp: "^push \"dhcp-option DNS 208.67.222.222\""
+      line: "push \"dhcp-option DNS 208.67.222.222\""
+    - regexp: "^push \"dhcp-option DNS 208.67.220.220\""
+      line: "push \"dhcp-option DNS 208.67.220.220\""
+    - regexp: "^port "
+      line: "port {{ vpn_port }}"
+    - regexp: "^proto "
+      line: "proto {{ vpn_proto }}"
+    - regexp: "^cert "
+      line: "cert {{ vpn_name }}.crt"
+    - regexp: "^key "
+      line: "key {{ vpn_name }}.key"
+
+# Step 8
+- name: Configure network to route traffic through the VPN
+  become: yes
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: 1
+
+# Step 9
+- name: Retrieve content of /etc/ufw/before.rules
+  become: yes
+  slurp:
+    src: /etc/ufw/before.rules
+  register: ufw_before_rules_base64
+
+- name: Decode ufw before rules content and store as fact
+  set_fact:
+    ufw_before_rules: "{{ ufw_before_rules_base64.content | b64decode }}"
+
+- name: Identify if UFW needs to be configured
+  set_fact:
+    need_to_configure_ufw: "{{ 'POSTROUTING ACCEPT' not in ufw_before_rules }}"
+
+- name: UFW - set default policy for the POSTROUTING chain in the nat table
+    and masquerade any traffic coming from the VPN.
+  become: yes
+  blockinfile:
+    path: /etc/ufw/before.rules
+    insertbefore: BOF
+    block: |
+      # START OPENVPN RULES
+      # NAT table rules
+      *nat
+      :POSTROUTING ACCEPT [0:0]
+      # Allow traffic from OpenVPN client to eth0 (change to the interface you discovered!)
+      -A POSTROUTING -s 10.8.0.0/8 -o {{ ansible_default_ipv4.interface }} -j MASQUERADE
+      COMMIT
+      # END OPENVPN RULES
+
+- name: UFW - allow forwarded packets by default
+  become: yes
+  lineinfile:
+    dest: /etc/default/ufw
+    regexp: "^DEFAULT_FORWARD_POLICY="
+    line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+    state: present
+
+- name: UFW - allow traffic to OpenVPN
+  become: yes
+  community.general.ufw:
+    rule: allow
+    port: "{{ vpn_port }}"
+    proto: "{{ vpn_proto }}"
+
+- name: UFW - reload UFW
+  when: need_to_configure_ufw
+  become: yes
+  community.general.ufw:
+    state: reloaded

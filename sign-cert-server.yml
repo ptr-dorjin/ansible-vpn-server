@@ -1,0 +1,125 @@
+---
+- name: Retrieve VPN server CA status
+  hosts: vpn_server
+  tasks:
+    - name: Retrieve OpenVPN cryptographic material
+      stat:
+        path: /etc/openvpn/server/ta.key
+      register: ta_key
+
+    - name: Add TA key status to dummy host
+      add_host:
+        name: TA_KEY_STAT_HOLDER
+        ta_key_stat: "{{ ta_key.stat }}"
+      changed_when: false
+
+# Step 3
+- name: Generate server key and CSR
+  hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+    - vars/vars-vpn.yml
+  pre_tasks:
+    - import_tasks: tasks/override-vars-for-tests.yml
+  vars:
+    - need_to_run: "{{ not ta_key.stat.exists }}"
+  tasks:
+    - name: Generate server private key and Certificate Signing Request (CSR)
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch gen-req {{ vpn_name }} nopass"
+
+    - name: Copy private key to OpenVPN config
+      when: need_to_run
+      become: yes
+      copy:
+        src: "{{ user_home }}/easy-rsa/pki/private/{{ vpn_name }}.key"
+        dest: /etc/openvpn/server/
+        remote_src: yes
+        mode: 0600
+
+    - name: Fetch VPN server CSR
+      when: need_to_run
+      fetch:
+        src: "~/easy-rsa/pki/reqs/{{ vpn_name }}.req"
+        dest: /tmp/
+        flat: yes
+
+# Step 4
+- name: Sign server CSR
+  hosts: ca_server
+  vars_files:
+    - vars/vars-vpn.yml
+  vars:
+    - need_to_run: "{{ not hostvars['TA_KEY_STAT_HOLDER']['ta_key_stat'].exists }}"
+  tasks:
+    - name: Copy VPN serer CSR to CA server
+      when: need_to_run
+      copy:
+        src: "/tmp/{{ vpn_name }}.req"
+        dest: /tmp/
+        mode: 0600
+
+    - name: Import VPN server CSR
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch import-req /tmp/{{ vpn_name }}.req {{ vpn_name }}"
+      register: out
+      failed_when: out.rc == 1 and not 'already exists' in out.stderr
+
+    - name: Sign VPN server CSR
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch sign-req server {{ vpn_name }}"
+      register: out
+      failed_when: out.rc == 1
+
+    - name: Fetch CA cert and signed VPN cert
+      when: need_to_run
+      fetch:
+        src: "{{ item }}"
+        dest: /tmp/
+        flat: yes
+      loop:
+        - "~/easy-rsa/pki/issued/{{ vpn_name }}.crt"
+        - ~/easy-rsa/pki/ca.crt
+
+# Step 5
+- name: Copy signed server CSR to VPN server and generate server secret key
+  hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+    - vars/vars-vpn.yml
+  vars:
+    - need_to_run: "{{ not ta_key.stat.exists }}"
+  pre_tasks:
+    - import_tasks: tasks/override-vars-for-tests.yml
+  tasks:
+    - name: Copy CA cert and signed VPN cert to VPN server
+      when: need_to_run
+      become: yes
+      copy:
+        src: "/tmp/{{ item }}"
+        dest: /etc/openvpn/server/
+        mode: 0600
+      loop:
+        - "{{ vpn_name }}.crt"
+        - ca.crt
+
+    - name: Generate VPN secret key
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: openvpn --genkey --secret ta.key
+
+    - name: Copy ta.key to OpenVPN config
+      when: need_to_run
+      become: yes
+      copy:
+        src: "{{ user_home }}/easy-rsa/ta.key"
+        dest: /etc/openvpn/server
+        remote_src: yes
+        mode: 0600

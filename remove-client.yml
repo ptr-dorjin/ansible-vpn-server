@@ -1,0 +1,73 @@
+---
+- name: Retrieve client cert status
+  hosts: ca_server
+  vars_files:
+    - vars/main-vars.yml
+  tasks:
+    - name: Retrieve client cert status
+      stat:
+        path: "~/easy-rsa/pki/issued/{{ client_name }}.crt"
+      register: client_cert
+
+    - name: Add client cert status to dummy host
+      add_host:
+        name: CLIENT_CERT_STAT_HOLDER
+        client_cert_stat: "{{ client_cert.stat }}"
+      changed_when: false
+
+- name: Generate CRL
+  hosts: ca_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - need_to_run: "{{ client_cert.stat.exists }}"
+  tasks:
+    - name: Revoke client certificate
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch revoke {{ client_name }}"
+
+    - name: Generate a Certificate Revocation List (CRL)
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: ./easyrsa gen-crl
+
+    - name: Fetch CRL
+      when: need_to_run
+      fetch:
+        src: ~/easy-rsa/pki/crl.pem
+        dest: /tmp/
+        flat: yes
+
+- name: Update CRL on VPN server
+  hosts: vpn_server
+  vars_files:
+    - vars/vars-vpn.yml
+  vars:
+    - need_to_run: "{{ hostvars['CLIENT_CERT_STAT_HOLDER']['client_cert_stat'].exists }}"
+  tasks:
+    - name: Copy CRL to VPN server
+      when: need_to_run
+      become: yes
+      copy:
+        src: /tmp/crl.pem
+        dest: /etc/openvpn/server/
+        mode: 0600
+
+    - name: Add crl-verify instruction for OpenVPN
+      when: need_to_run
+      become: yes
+      lineinfile:
+        dest: "{{ vpn_config_path }}"
+        regexp: "crl-verify crl.pem"
+        line: "crl-verify crl.pem"
+        state: present
+
+    - name: Restart OpenVPN service
+      when: need_to_run
+      become: yes
+      service:
+        name: openvpn-server@server.service
+        state: restarted

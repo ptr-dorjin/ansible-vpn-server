@@ -1,0 +1,2 @@
+---
+easyrsa_vars_file_name: easy-rsa-vars-ca.j2

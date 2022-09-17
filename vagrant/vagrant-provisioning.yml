@@ -1,0 +1,27 @@
+---
+- name: Provisioning for Vagrant
+  hosts: all
+  become: yes
+
+  vars:
+    # Existing SSH key on localhost to SSH on vagrant VMs
+    ssh_key_for_vagrant: ~/.ssh/id_ed25519.pub
+
+  tasks:
+    - name: Update apt cache (on Debian)
+      apt:
+        update_cache: true
+        cache_valid_time: 3600
+      when: ansible_os_family == 'Debian'
+
+    - name: Copy current user's public SSH key to the VM
+      authorized_key:
+        user: vagrant
+        key: "{{ lookup('file', ssh_key_for_vagrant) }}"
+
+- name: Run the playbook
+  import_playbook: ../init.yml
+  vars:
+    extra_vars:
+      security_ssh_allowed_users:
+        - vagrant

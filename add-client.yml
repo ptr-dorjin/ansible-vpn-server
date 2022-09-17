@@ -1,0 +1,28 @@
+---
+# set client name in vars/main-vars.yml before proceeding
+
+- name: Sign client cert
+  import_playbook: sign-cert-client.yml
+
+- name: Generate client config
+  hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  tasks:
+    - name: Retrieve the status of client VPN config
+      stat:
+        path: "~/client-configs/files/{{ client_name }}.ovpn"
+      register: client_vpn_config
+
+    - name: Generate client VPN config
+      when: not client_vpn_config.stat.exists
+      command:
+        chdir: ~/client-configs
+        cmd: "./make_config.sh {{ client_name }}"
+
+    - name: Download client VPN config
+      fetch:
+        src: "~/client-configs/files/{{ client_name }}.ovpn"
+        dest: ~/
+        flat: yes
+      changed_when: false

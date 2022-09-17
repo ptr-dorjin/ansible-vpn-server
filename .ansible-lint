@@ -1,0 +1,8 @@
+---
+exclude_paths:
+  - roles/geerlingguy.security
+
+skip_list:
+  - 'fqcn-builtins'
+  - 'schema'
+  - 'var-naming'

@@ -1,0 +1,96 @@
+---
+# Step 6
+- name: Retrieve client cert status
+  hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  tasks:
+    - name: Retrieve client cert status
+      stat:
+        path: "~/client-configs/keys/{{ client_name }}.crt"
+      register: client_cert
+
+    - name: Add client cert status to dummy host
+      add_host:
+        name: CLIENT_CERT_STAT_HOLDER
+        client_cert_stat: "{{ client_cert.stat }}"
+      changed_when: false
+
+- name: Generate client CSR
+  hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - need_to_run: "{{ not client_cert.stat.exists }}"
+  tasks:
+    - name: Generate client Certificate Signing Request (CSR)
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch gen-req {{ client_name }} nopass"
+
+    - name: Copy client key to client-configs/keys directory
+      when: need_to_run
+      copy:
+        src: "~/easy-rsa/pki/private/{{ client_name }}.key"
+        dest: "~/client-configs/keys/"
+        mode: 0600
+        remote_src: yes
+
+    - name: Fetch client CSR
+      when: need_to_run
+      fetch:
+        src: "~/easy-rsa/pki/reqs/{{ client_name }}.req"
+        dest: /tmp/
+        flat: yes
+
+- name: Sign client CSR
+  hosts: ca_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - need_to_run: "{{ not hostvars['CLIENT_CERT_STAT_HOLDER']['client_cert_stat'].exists }}"
+  tasks:
+    - name: Copy client CSR to CA server
+      when: need_to_run
+      copy:
+        src: "/tmp/{{ client_name }}.req"
+        dest: /tmp/
+        mode: 0600
+
+    - name: Import client CSR
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch import-req /tmp/{{ client_name }}.req {{ client_name }}"
+      register: out
+      failed_when: out.rc == 1 and not 'already exists' in out.stderr
+
+    - name: Sign client CSR
+      when: need_to_run
+      command:
+        chdir: ~/easy-rsa
+        cmd: "./easyrsa --batch sign-req client {{ client_name }}"
+      register: out
+      failed_when: out.rc == 1
+
+    - name: Fetch signed client cert
+      when: need_to_run
+      fetch:
+        src: "~/easy-rsa/pki/issued/{{ client_name }}.crt"
+        dest: /tmp/
+        flat: yes
+
+- name: Copy sign client CSR to VPN server
+  hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - need_to_run: "{{ not client_cert.stat.exists }}"
+  tasks:
+    - name: Copy signed client cert to VPN server client-configs/keys directory
+      when: need_to_run
+      copy:
+        src: "/tmp/{{ client_name }}.crt"
+        dest: ~/client-configs/keys/
+        mode: 0600

@@ -1,0 +1,27 @@
+---
+- name: Create a Certified Authority
+  become: no
+  block:
+    - name: Retrieve pki directory status
+      stat:
+        path: ~/easy-rsa/pki/ca.crt
+      register: ca_crt
+
+    - name: Retrieve .rnd file status
+      stat:
+        path: ~/easy-rsa/pki/.rnd
+      register: pki_rnd
+      when: not ca_crt.stat.exists
+
+    - name: Create .rnd file, if it doesn't exist
+      file:
+        path: ~/easy-rsa/pki/.rnd
+        state: touch
+        mode: 0600
+      when: not ca_crt.stat.exists and not pki_rnd.stat.exists
+
+    - name: Created a Certified Authority, if not yet
+      command:
+        chdir: ~/easy-rsa
+        cmd: ./easyrsa --batch build-ca nopass
+      when: not ca_crt.stat.exists

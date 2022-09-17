@@ -1,0 +1,40 @@
+---
+- name: Retrieve CA certificate status
+  hosts: vpn_server
+  tasks:
+    - name: Retrieve CA certificate status from VPN server
+      stat:
+        path: /etc/ssl/certs/ca.pem
+      register: ca_pem
+
+    - name: Add CA pem stat to dummy host
+      add_host:
+        name: CA_PEM_STAT_HOLDER
+        ca_pem_stat: "{{ ca_pem.stat }}"
+      changed_when: false
+
+- name: Fetch CA certificate
+  hosts: ca_server
+  tasks:
+    - name: Fetch CA certificate
+      when: not hostvars['CA_PEM_STAT_HOLDER']['ca_pem_stat'].exists
+      fetch:
+        src: ~/easy-rsa/pki/ca.crt
+        dest: /tmp/
+        flat: yes
+
+- name: Import CA certificate to VPN server
+  hosts: vpn_server
+  tasks:
+    - name: Copy CA certificate to VPN server
+      become: yes
+      copy:
+        src: /tmp/ca.crt
+        dest: /usr/local/share/ca-certificates/
+        mode: 0600
+      when: not ca_pem.stat.exists
+
+    - name: Import CA certificate
+      become: yes
+      command: update-ca-certificates
+      when: not ca_pem.stat.exists

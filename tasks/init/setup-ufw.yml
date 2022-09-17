@@ -1,0 +1,19 @@
+---
+- name: Ensure ufw is installed
+  become: yes
+  apt:
+    name: ufw
+    state: present
+
+- name: Replace default ip6tables(legacy) with ip6tables-nft
+  become: yes
+  community.general.alternatives:
+    name: ip6tables
+    path: /usr/sbin/ip6tables-nft
+
+- name: Enable OpenSSH in ufw
+  become: yes
+  community.general.ufw:
+    rule: allow
+    name: OpenSSH
+    state: enabled

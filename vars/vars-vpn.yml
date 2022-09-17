@@ -1,0 +1,9 @@
+---
+easyrsa_vars_file_name: easy-rsa-vars-vpn.j2
+vpn_example_server_config_path: /usr/share/doc/openvpn/examples/sample-config-files/server.conf
+vpn_example_server_config_path_zipped: /usr/share/doc/openvpn/examples/sample-config-files/server.conf.gz
+vpn_example_client_config_path: /usr/share/doc/openvpn/examples/sample-config-files/client.conf
+vpn_config_path: /etc/openvpn/server/server.conf
+vpn_name: server
+vpn_port: 1194
+vpn_proto: udp

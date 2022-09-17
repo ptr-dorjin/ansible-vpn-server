@@ -1,0 +1,55 @@
+---
+# Step 1
+- name: Ensure easy-rsa is installed
+  become: yes
+  apt:
+    state: present
+    name: easy-rsa
+
+- name: Create easy-rsa directory in home directory
+  become: no
+  file:
+    path: ~/easy-rsa
+    state: directory
+    mode: 0700
+
+# equivalent of running: ln -s /usr/share/easy-rsa/* ~/easy-rsa/
+- name: Create symlinks
+  block:
+    - name: List all files in easy-rsa installation directory
+      become: no
+      find:
+        paths: /usr/share/easy-rsa
+        file_type: any
+      register: easy_rsa_dir
+
+    - name: Create symlinks to all files in easy-rsa directory
+      become: no
+      file:
+        src: "{{ item.path }}"
+        path: "~/easy-rsa/{{ item.path | basename }}"
+        state: link
+      loop: "{{ easy_rsa_dir.files }}"
+
+- name: Copy easy-rsa vars file
+  become: no
+  template:
+    src: "{{ easyrsa_vars_file_name }}"
+    dest: ~/easy-rsa/vars
+    mode: 0664
+
+# Step 2
+- name: Initialize PKI
+  block:
+    - name: Retrieve pki directory status
+      become: no
+      stat:
+        path: ~/easy-rsa/pki
+      register: pki_dir
+
+    - name: Initialize PKI, if not yet
+      become: no
+      command:
+        chdir: ~/easy-rsa
+        cmd: ./easyrsa init-pki
+      when: not pki_dir.stat.exists

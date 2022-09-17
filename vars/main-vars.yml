@@ -1,0 +1,12 @@
+---
+ssh_port: 22
+user_home: "/home/{{ ansible_user_id }}"
+# VPN client name is here because it's used in both CA and VPN servers
+client_name: client1
+
+# settings for geerlingguy.security
+security_ssh_port: "{{ ssh_port }}"
+security_ssh_allowed_users:
+  - your_user
+security_autoupdate_reboot: true
+security_autoupdate_mail_to: todo@example.com

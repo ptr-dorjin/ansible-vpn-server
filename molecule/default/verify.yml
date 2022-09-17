@@ -1,0 +1,415 @@
+---
+- name: Verify all
+  hosts: all
+
+  vars:
+    - sshd_config_path: /etc/ssh/sshd_config
+
+  tasks:
+    - name: Assert packages
+      block:
+        - name: Gather package facts
+          package_facts:
+            manager: "auto"
+
+        - name: Assert packages are installed
+          assert:
+            that:
+              - "'fail2ban' in ansible_facts.packages"
+              - "'unattended-upgrades' in ansible_facts.packages"
+              - "'iptables' in ansible_facts.packages"
+              - "'ufw' in ansible_facts.packages"
+              - "'easy-rsa' in ansible_facts.packages"
+
+    - name: Assert services
+      block:
+        - name: Gather service facts
+          service_facts:
+
+        - name: Assert services are running
+          assert:
+            that:
+              - "ansible_facts.services['ssh.service'].state == 'running'"
+              - "ansible_facts.services['ssh.service'].status == 'enabled'"
+              - "ansible_facts.services['ufw.service'].status == 'enabled'"
+
+    - name: Assert SSH config
+      block:
+        - name: Retrieve content of sshd_config file
+          slurp:
+            src: "{{ sshd_config_path }}"
+          register: sshd_config_base64
+
+        - name: Decode sshd_config content and store as fact
+          set_fact:
+            sshd_config: "{{ sshd_config_base64.content | b64decode }}"
+
+        - name: Assert sshd_config is set up correctly
+          assert:
+            that:
+              - sshd_config | regex_search('\nPasswordAuthentication no')
+              - sshd_config | regex_search('\nPermitRootLogin no')
+              - sshd_config | regex_search('\nPort 22')
+              - sshd_config | regex_search('\nUseDNS no')
+              - sshd_config | regex_search('\nPermitEmptyPasswords no')
+              - sshd_config | regex_search('\nChallengeResponseAuthentication no')
+              - sshd_config | regex_search('\nGSSAPIAuthentication no')
+              - sshd_config | regex_search('\nX11Forwarding no')
+              - sshd_config | regex_search('\nAllowUsers your_user')
+
+    - name: Assert ufw config
+      block:
+        - name: Retrieve output of ufw status
+          become: yes
+          command: ufw status
+          register: ufw_status
+          changed_when: false
+
+        - name: Assert ufw status contains OpenSSH
+          assert:
+            that:
+              - ufw_status.stdout | regex_search('OpenSSH +ALLOW')
+              - ufw_status.stdout | regex_search('OpenSSH \(v6\) +ALLOW')
+
+    - name: Assert EasyRSA files are symlinked
+      block:
+        - name: Retrieve files from easy-rsa directory
+          stat:
+            path: ~/easy-rsa/easyrsa
+          register: easyrsa_script
+
+        - name: Assert easyrsa script is symlinked
+          assert:
+            that:
+              - easyrsa_script.stat.exists
+              - easyrsa_script.stat.islnk
+
+    - name: Assert EasyRSA vars file is copied
+      block:
+        - name: Retrieve vars file status
+          stat:
+            path: ~/easy-rsa/vars
+          register: vars_file
+
+        - name: Assert vars file is present
+          assert:
+            that: vars_file.stat.exists
+
+- name: Verify CA server
+  hosts: ca_server
+
+  tasks:
+    - name: Assert CA PKI is created
+      block:
+        - name: Retrieve ca.crt file status
+          stat:
+            path: ~/easy-rsa/pki/ca.crt
+          register: ca_crt_file
+
+        - name: Assert CA PKI is created
+          assert:
+            that: ca_crt_file.stat.exists
+
+- name: Verify VPN server config
+  hosts: vpn_server
+
+  vars_files:
+    - ../../vars/main-vars.yml
+    - ../../vars/vars-vpn.yml
+
+  tasks:
+    - name: Assert packages
+      block:
+        - name: Gather package facts
+          package_facts:
+            manager: "auto"
+
+        - name: Assert packages are installed
+          assert:
+            that:
+              - "'openvpn' in ansible_facts.packages"
+
+    - name: Assert OpenVPN config
+      block:
+        - name: Retrieve content of OpenVPN config file
+          slurp:
+            src: "{{ vpn_config_path }}"
+          register: vpn_config_base64
+
+        - name: Decode vpn_config content and store as fact
+          set_fact:
+            vpn_config: "{{ vpn_config_base64.content | b64decode }}"
+
+        - name: Assert vpn_config is set up correctly
+          assert:
+            that:
+              - "'tls_auth' not in vpn_config"
+              - vpn_config | regex_search('\ntls-crypt ta.key')
+              - vpn_config | regex_search('\ncipher AES-256-GCM')
+              - vpn_config | regex_search('\nauth SHA256')
+              - vpn_config | regex_search('\ndh none')
+              - vpn_config | regex_search('\nuser nobody')
+              - vpn_config | regex_search('\ngroup nogroup')
+              - vpn_config | regex_search('\npush "redirect-gateway def1 bypass-dhcp"')
+              - vpn_config | regex_search('\npush "dhcp-option DNS 208.67.222.222"')
+              - vpn_config | regex_search('\npush "dhcp-option DNS 208.67.220.220"')
+              - "vpn_config | regex_search('\nport {{ vpn_port }}')"
+              - "vpn_config | regex_search('\nproto {{ vpn_proto }}')"
+              - "vpn_config | regex_search('\ncert {{ vpn_name }}.crt')"
+              - "vpn_config | regex_search('\nkey {{ vpn_name }}.key')"
+
+    - name: Assert CA cert is imported on VPN server
+      block:
+        - name: Retrieve ca.pem file status
+          stat:
+            path: /etc/ssl/certs/ca.pem
+          register: ca_pem
+
+        - name: Assert CA cert is imported on VPN server
+          assert:
+            that: ca_pem.stat.exists
+
+    - name: Assert TA key is created
+      block:
+        - name: Retrieve TA key status
+          stat:
+            path: /etc/openvpn/server/ta.key
+          register: ta_key
+
+        - name: Assert TA key is created
+          assert:
+            that: ta_key.stat.exists
+
+    - name: Assert files permissions in /etc/openvpn/server/ directory
+      block:
+        - name: Retrieve files ACL in /etc/openvpn/server/ directory
+          ansible.posix.acl:
+            path: "/etc/openvpn/server/{{ item }}"
+          register: acl_info
+          loop:
+            - ca.crt
+            - ta.key
+            - "{{ vpn_name }}.crt"
+            - "{{ vpn_name }}.key"
+
+        - name: Assert files permissions in /etc/openvpn/server/ directory
+          assert:
+            that:
+              - "'user::rw-' in {{ item.acl }}"
+              - "'group::---' in {{ item.acl }}"
+              - "'other::---' in {{ item.acl }}"
+          loop: "{{ acl_info.results }}"
+
+    - name: Assert VPN ufw before rules are applied
+      block:
+        - name: Retrieve content of /etc/ufw/before.rules
+          become: yes
+          slurp:
+            src: /etc/ufw/before.rules
+          register: ufw_before_rules_base64
+
+        - name: Decode ufw before rules content and store as fact
+          set_fact:
+            ufw_before_rules: "{{ ufw_before_rules_base64.content | b64decode }}"
+
+        - name: Assert ufw_before_rules is set up correctly
+          assert:
+            that:
+              - ufw_before_rules | regex_search('\n\*nat')
+              - ufw_before_rules | regex_search('\n:POSTROUTING ACCEPT \[0:0\]')
+              - "ufw_before_rules | regex_search('-A POSTROUTING -s 10.8.0.0/8 -o {{ ansible_default_ipv4.interface }} -j MASQUERADE')"
+
+    - name: Assert UFW forwards packets by default
+      block:
+        - name: Retrieve content of /etc/default/ufw
+          become: yes
+          slurp:
+            src: /etc/default/ufw
+          register: ufw_defaults_base64
+
+        - name: Decode ufw defaults content and store as fact
+          set_fact:
+            ufw_defaults: "{{ ufw_defaults_base64.content | b64decode }}"
+
+        - name: Assert ufw_defaults is set up correctly
+          assert:
+            that:
+              - "'DEFAULT_FORWARD_POLICY=\"ACCEPT\"' in ufw_defaults"
+
+    - name: Assert UFW forwards packets by default
+      block:
+        - name: Retrieve output of ufw status
+          become: yes
+          command: ufw status
+          register: ufw_status
+          changed_when: false
+
+        - name: Assert ufw allows OpenVPN
+          assert:
+            that:
+              - "'{{ vpn_port }}/{{ vpn_proto }}                   ALLOW       Anywhere' in ufw_status.stdout"
+              - "'{{ vpn_port }}/{{ vpn_proto }} (v6)              ALLOW       Anywhere (v6)' in ufw_status.stdout"
+
+    - name: Assert OpenVPN is started
+      block:
+        - name: Gather service facts
+          service_facts:
+
+        - name: Assert OpenVPN service is running
+          assert:
+            that:
+              - "ansible_facts.services['openvpn-server@server.service'].state == 'running'"
+              - "ansible_facts.services['openvpn-server@server.service'].status == 'active'"
+
+- name: Verify VPN client config
+  hosts: vpn_server
+
+  vars_files:
+    - ../../vars/main-vars.yml
+    - ../../vars/vars-vpn.yml
+
+  tasks:
+    - name: Assert VPN client base config
+      block:
+        - name: Retrieve content of VPN client base config file
+          slurp:
+            src: ~/client-configs/base.conf
+          register: client_base_config_base64
+
+        - name: Decode client_base_config content and store as fact
+          set_fact:
+            client_base_config: "{{ client_base_config_base64.content | b64decode }}"
+
+        - name: Assert client_base_config is set up correctly
+          assert:
+            that:
+              - "'remote {{ inventory_hostname }} {{ vpn_port }}' in client_base_config"
+              - "client_base_config | regex_search('\nproto {{ vpn_proto }}')"
+              - client_base_config | regex_search('\nuser nobody')
+              - client_base_config | regex_search('\ngroup nogroup')
+              - client_base_config | regex_search('\n;ca ca.crt')
+              - client_base_config | regex_search('\n;cert client.crt')
+              - client_base_config | regex_search('\n;key client.key')
+              - client_base_config | regex_search('\n;tls-auth ta.key 1')
+              - client_base_config | regex_search('\ncipher AES-256-GCM')
+              - client_base_config | regex_search('\nauth SHA256')
+              - client_base_config | regex_search('\nkey-direction 1')
+
+    - name: Assert make_config.sh is present
+      block:
+        - name: Retrieve make_config.sh status
+          stat:
+            path: ~/client-configs/make_config.sh
+          register: make_config_sh
+
+        - name: Assert make_config.sh is present
+          assert:
+            that: make_config_sh.stat.exists
+
+    - name: Assert make_config.sh permissions in ~/client-configs/keys/ directory
+      block:
+        - name: Retrieve ACL of make_config.sh
+          ansible.posix.acl:
+            path: ~/client-configs/make_config.sh
+          register: make_config_acl
+
+        - name: Assert make_config.sh permissions
+          assert:
+            that:
+              - "'user::rwx' in {{ make_config_acl.acl }}"
+              - "'group::---' in {{ make_config_acl.acl }}"
+              - "'other::---' in {{ make_config_acl.acl }}"
+
+    - name: Assert server key and cert permissions in ~/client-configs/keys/ directory
+      block:
+        - name: Retrieve files ACL in ~/client-configs/keys/ directory
+          ansible.posix.acl:
+            path: "~/client-configs/keys/{{ item }}"
+          register: acl_info
+          loop:
+            - ca.crt
+            - ta.key
+
+        - name: Assert server key and cert permissions in ~/client-configs/keys/ directory
+          assert:
+            that:
+              - "'user::rw-' in {{ item.acl }}"
+              - "'group::---' in {{ item.acl }}"
+              - "'other::---' in {{ item.acl }}"
+          loop: "{{ acl_info.results }}"
+
+- name: Verify client is added
+  hosts: vpn_server
+
+  vars_files:
+    - ../../vars/main-vars.yml
+    - ../../vars/vars-vpn.yml
+
+  tasks:
+    - name: Assert client key and cert permissions in ~/client-configs/keys/ directory
+      block:
+        - name: Retrieve files ACL in ~/client-configs/keys/ directory
+          ansible.posix.acl:
+            path: "~/client-configs/keys/{{ item }}"
+          register: acl_info
+          loop:
+            - "{{ client_name }}.crt"
+            - "{{ client_name }}.key"
+
+        - name: Assert client key and cert permissions in ~/client-configs/keys/ directory
+          assert:
+            that:
+              - "'user::rw-' in {{ item.acl }}"
+              - "'group::---' in {{ item.acl }}"
+              - "'other::---' in {{ item.acl }}"
+          loop: "{{ acl_info.results }}"
+
+    - name: Assert client cert is created
+      block:
+        - name: Retrieve client cert status
+          stat:
+            path: "~/client-configs/keys/{{ client_name }}.crt"
+          register: client_cert
+
+        - name: Assert client cert is created
+          assert:
+            that: client_cert.stat.exists
+
+    - name: Assert VPN client config is created
+      block:
+        - name: Retrieve VPN client config status
+          stat:
+            path: "~/client-configs/files/{{ client_name }}.ovpn"
+          register: client_vpn_config
+
+        - name: Assert VPN client config is created
+          assert:
+            that: client_vpn_config.stat.exists
+
+    - name: Assert VPN client config is downloaded
+      block:
+        - name: Check for ~/.blah/config
+          delegate_to: localhost
+          stat:
+            path: "~/{{ client_name }}.ovpn"
+          register: client_vpn_config_local
+
+        - name: Assert VPN client config is downloaded
+          assert:
+            that: client_vpn_config_local.stat.exists
+
+- name: Verify client cert is revoked
+  hosts: vpn_server
+
+  tasks:
+    - name: Assert CRL is copied
+      block:
+        - name: Retrieve CRL status
+          become: yes
+          stat:
+            path: /etc/openvpn/server/crl.pem
+          register: crl_pem
+
+        - name: Assert CRL is present
+          assert:
+            that: crl_pem.stat.exists

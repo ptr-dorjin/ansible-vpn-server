@@ -1,0 +1,152 @@
+---
+- name: Create client config infra
+  hosts: vpn_server
+
+  vars_files:
+    - vars/main-vars.yml
+    - vars/vars-vpn.yml
+
+  pre_tasks:
+    - import_tasks: tasks/override-vars-for-tests.yml
+
+  tasks:
+    - name: Create client-config directories and set permissions
+      block:
+        - name: Retrieve client-configs/keys directory status
+          stat:
+            path: ~/client-configs/keys
+          register: client_keys
+
+        - name: Create ~/client-configs/keys directory
+          when: not client_keys.stat.exists
+          file:
+            path: ~/client-configs/keys
+            state: directory
+            mode: 0700
+
+        - name: Retrieve client-configs/files directory status
+          stat:
+            path: ~/client-configs/files
+          register: client_files
+
+        - name: Create ~/client-configs/files directory
+          when: not client_files.stat.exists
+          file:
+            path: ~/client-configs/files
+            state: directory
+            mode: 0700
+
+        - name: Set permissions on client-configs directory recursively
+          when: not client_keys.stat.exists or not client_files.stat.exists
+          file:
+            path: ~/client-configs
+            recurse: yes
+            mode: 0700
+
+    - name: Copy VPN ta.key to client-configs/keys directory
+      block:
+        - name: Retrieve client-configs/keys/ta.key status
+          stat:
+            path: ~/client-configs/keys/ta.key
+          register: ta_key
+
+        - name: Copy VPN ta.key to client-configs/keys directory
+          when: not ta_key.stat.exists
+          copy:
+            src: ~/easy-rsa/ta.key
+            dest: ~/client-configs/keys/
+            remote_src: yes
+            mode: 0600
+
+    - name: Copy CA cert to client-configs/keys directory
+      block:
+        - name: Retrieve client-configs/keys/ca.crt status
+          stat:
+            path: ~/client-configs/keys/ca.crt
+          register: ca_crt
+
+        - name: Copy CA cert to client-configs/keys directory
+          when: not ca_crt.stat.exists
+          become: yes
+          copy:
+            src: /etc/openvpn/server/ca.crt
+            dest: "{{ user_home }}/client-configs/keys/"
+            remote_src: yes
+            mode: 0600
+            owner: "{{ ansible_user_id }}"
+            group: "{{ ansible_user_id }}"
+
+    - name: Copy example client config file to client-configs dir
+      block:
+        - name: Retrieve client-configs/base.conf status
+          stat:
+            path: ~/client-configs/base.conf
+          register: client_base_conf
+
+        - name: Copy example client config file to client-configs dir
+          when: not client_base_conf.stat.exists
+          copy:
+            remote_src: "{{ openvpn_remote_example_config | default('yes') }}"
+            src: "{{ vpn_example_client_config_path }}"
+            dest: ~/client-configs/base.conf
+            mode: 0644
+
+    - name: Set up base client config
+      lineinfile:
+        dest: ~/client-configs/base.conf
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - regexp: "^remote "
+          line: "remote {{ inventory_hostname }} {{ vpn_port }}"
+        - regexp: "^proto "
+          line: "proto {{ vpn_proto }}"
+        - regexp: ";?user nobody"
+          line: "user nobody"
+        - regexp: ";?group nogroup"
+          line: "group nogroup"
+        - regexp: ";?ca ca.crt"
+          line: ";ca ca.crt"
+        - regexp: ";?cert client.crt"
+          line: ";cert client.crt"
+        - regexp: ";?key client.key"
+          line: ";key client.key"
+        - regexp: ";?tls-auth ta.key 1"
+          line: ";tls-auth ta.key 1"
+        - regexp: "^cipher "
+          line: "cipher AES-256-GCM"
+        - regexp: "^auth "
+          line: "auth SHA256"
+        - regexp: "^key-direction "
+          line: "key-direction 1"
+
+    - name: Set up base client DNS resolution config - resolv-conf / systemd-resolved sections
+      blockinfile:
+        path: ~/client-configs/base.conf
+        block: |
+          # resolv-conf section
+          ; script-security 2
+          ; up /etc/openvpn/update-resolv-conf
+          ; down /etc/openvpn/update-resolv-conf
+          #
+          # systemd-resolved section
+          ; script-security 2
+          ; up /etc/openvpn/update-systemd-resolved
+          ; down /etc/openvpn/update-systemd-resolved
+          ; down-pre
+          ; dhcp-option DOMAIN-ROUTE .
+
+    - name: Copy make_config.sh file
+      block:
+        - name: Retrieve client-configs/make_config.sh status
+          stat:
+            path: ~/client-configs/make_config.sh
+          register: make_config_sh
+
+        - name: Copy make_config.sh to client-configs dir
+          when: not make_config_sh.stat.exists
+          copy:
+            src: files/make_config.sh
+            dest: ~/client-configs/
+            mode: 0700

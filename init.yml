@@ -1,0 +1,41 @@
+---
+- name: Set up CA server
+  hosts: ca_server
+  become: yes
+
+  vars_files:
+    - vars/main-vars.yml
+    - vars/vars-ca.yml
+
+  pre_tasks:
+    - import_tasks: tasks/override-vars-for-tests.yml
+    - import_tasks: tasks/init/common-tasks.yml
+
+  roles:
+    - role: geerlingguy.security
+
+  tasks:
+    - import_tasks: tasks/init/setup-ufw.yml
+    - import_tasks: tasks/init/setup-easy-rsa.yml
+    - import_tasks: tasks/init/ca-server-init-tasks.yml
+
+
+- name: Set up VPN server
+  hosts: vpn_server
+  become: yes
+
+  vars_files:
+    - vars/main-vars.yml
+    - vars/vars-vpn.yml
+
+  pre_tasks:
+    - import_tasks: tasks/override-vars-for-tests.yml
+    - import_tasks: tasks/init/common-tasks.yml
+
+  roles:
+    - role: geerlingguy.security
+
+  tasks:
+    - import_tasks: tasks/init/setup-ufw.yml
+    - import_tasks: tasks/init/setup-easy-rsa.yml
+    - import_tasks: tasks/init/vpn-server-init-tasks.yml

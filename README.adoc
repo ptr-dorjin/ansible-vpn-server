@@ -1,0 +1,172 @@
+= VPN Server Ansible Playbook
+
+Set up a VPN server and a separate CA server, based on https://www.digitalocean.com/community/tutorials/how-to-set-up-and-configure-an-openvpn-server-on-ubuntu-20-04[how-to] from Digital Ocean. Works with any cloud provider. Tested it with AWS, GCP, and Yandex Cloud.
+
+== Installation
+
+----
+sudo apt install python3-pip
+sudo pip3 install --upgrade pip
+pip3 uninstall ansible-base
+pip3 install ansible-core ansible
+
+git clone git@github.com:ptr-dorjin/ansible-vpn-server.git
+cd ansible-vpn-server
+
+ansible-galaxy install -r requirements.yml
+----
+
+== Prerequisite
+
+- Launch two VMs in the cloud with Ubuntu 20.04 LTS:
+** CA server - can have dynamic/ephemeral public IP address. CA server should be up and running when using this playbook; other times it can be stopped.
+*** Open inbound port TCP 22 (for initial setup) plus any non-default port that you want to use instead of 22. For non-default port, change `ssh_port` value in `vars/main-vars.yml`.
+** VPN server - should have static/allocated public IP address.
+*** Open inbound port TCP 22 (for initial setup) plus any non-default port, to SSH, similar to CA server.
+*** Open inbound UDP 1194 or any non-default protocol and port that you want to use for OpenVPN. If you use non-default proto/port, then change default value in `vars/vars-vpn.yml` for `vpn_proto`/`vpn_port` properties.
+
+== Configure
+
+=== inventory.ini
+
+. Set IP addresses of CA and VPN servers.
+. Put `ansible_user=remote_user` after ip address, if remote user doesn't match current user.
+. Put `ansible_ssh_private_key_file=~/.ssh/custom_key.pem` after ip address, if non-default key is needed.
+
+=== vars/main-vars.yml (optional)
+
+- `ssh_port` if you want to use non-default. If you do so, make sure you open that port in your cloud provider's firewall.
+- `security_ssh_allowed_users` - allow-list remote users that you want to use on these VMs. Anyone else will not be able to SSH on the hosts, after the 1st runbook run. So, be careful with this property. This is used by `geerlingguy.security` Ansible role.
+
+
+== Run
+
+=== CA server setup
+
+Based on https://www.digitalocean.com/community/tutorials/how-to-set-up-and-configure-a-certificate-authority-ca-on-ubuntu-20-04[CA server how-to] from Digital Ocean
+
+Fully-automated process:
+
+----
+ansible-playbook init.yml -l ca_server
+----
+
+=== VPN server setup
+
+Based on https://www.digitalocean.com/community/tutorials/how-to-set-up-and-configure-an-openvpn-server-on-ubuntu-20-04[VPN server how-to] from Digital Ocean
+
+
+.Configure `vars/vars-vpn.yml` (optional)
+- `vpn_name` can put something more specific, if you're dealing with several VPN servers and one CA server.
+- `vpn_proto` and `vpn_port` - protocol and port of the OpenVPN server. You need to open it in your cloud provider's firewall.
+
+Fully-automated process:
+
+----
+ansible-playbook init.yml -l vpn_server
+ansible-playbook vpn-post-provision.yml
+----
+
+=== Adding a new VPN client
+
+.Specify client name in the CLI argument:
+----
+ansible-playbook add-client.yml --extra-vars client_name=new_client_name
+----
+
+Or:
+
+- Set `client_name` value in `vars/main-vars.yml`
+- then run:
++
+----
+ansible-playbook add-client.yml
+----
+
+=== Revoking VPN client certificate
+
+.Specify client name in the CLI argument:
+----
+ansible-playbook remove-client.yml --extra-vars client_name=client_name_to_revoke
+----
+
+Or:
+
+- Set `client_name` value in `vars/main-vars.yml`
+- then run:
++
+----
+ansible-playbook remove-client.yml
+----
+
+== Testing with Molecule
+
+.Install Molecule
+----
+pip install yamllint ansible-lint flake8 molecule[docker]
+----
+
+.Test
+----
+molecule test # full test
+
+molecule converge # to run only converge.yml. This will keep docker container running for debugging
+
+molecule verify # to run verify.yml on already running docker container
+
+molecule destroy # to delete docker container
+----
+
+.Troubleshooting
+If molecule fails due to `systemctl` error `Failed to connect to bus: No such file or directory`, a workaround is to boot the host OS with kernel parameter `systemd.unified_cgroup_hierarchy=0`
+
+== Testing with Vagrant
+
+.Install Vagrant
+----
+sudo apt install virtualbox
+sudo apt install vagrant
+----
+
+Specify which SSH key on localhost should be used to SSH on vagrant VMs in `ssh_key_for_vagrant` value in `vagrant/vagrant-provisioning.yml`
+
+.Initialize VMs
+----
+vagrant up
+vagrant provision # run only Ansible playbook, if VMs are already created
+vagrant destroy # to delete the VMs
+----
+
+.Set IP address of CA/VPN server and the user in `inventory.ini` file:
+----
+[ca_server]
+192.168.56.2 ansible_user=vagrant
+
+[vpn_server]
+192.168.56.3 ansible_user=vagrant
+----
+
+.Finish setup:
+----
+ansible-playbook vpn-post-provision.yml
+----
+
+.Add a new client
+----
+ansible-playbook add-client.yml --extra-vars client_name=vagrant-vpn-client
+----
+
+.Remove client
+----
+ansible-playbook remove-client.yml --extra-vars client_name=vagrant-vpn-client
+----
+
+.SSH on VMs from the host system
+----
+ssh vagrant@192.168.56.2
+ssh vagrant@192.168.56.3
+----
+
+== License
+
+This project is licensed under the terms of the MIT license.

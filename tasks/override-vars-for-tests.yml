@@ -1,0 +1,5 @@
+---
+- name: Only for tests. Adding a way for Molecule/Vagrant to override variables
+  set_fact:
+    "{{ item.key }}": "{{ item.value }}"
+  with_dict: "{{ extra_vars | default({}) }}"

@@ -1,0 +1,12 @@
+---
+# Step 10
+- name: Start OpenVPN service
+  hosts: vpn_server
+  tasks:
+    - name: Start OpenVPN service
+      become: yes
+      service:
+        name: openvpn-server@server.service
+        enabled: yes
+        state: started
+        daemon_reload: yes
