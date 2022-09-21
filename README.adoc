@@ -24,6 +24,7 @@ ansible-galaxy install -r requirements.yml
 ** VPN server - should have static/allocated public IP address.
 *** Open inbound port TCP 22 (for initial setup) plus any non-default port, to SSH, similar to CA server.
 *** Open inbound UDP 1194 or any non-default protocol and port that you want to use for OpenVPN. If you use non-default proto/port, then change default value in `vars/vars-vpn.yml` for `vpn_proto`/`vpn_port` properties.
+** Non-root user with sudo access on each VM
 
 == Configure
 
