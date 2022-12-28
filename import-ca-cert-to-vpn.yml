@@ -1,6 +1,10 @@
 ---
 - name: Retrieve CA certificate status
   hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Retrieve CA certificate status from VPN server
       stat:
@@ -15,6 +19,10 @@
 
 - name: Fetch CA certificate
   hosts: ca_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Fetch CA certificate
       when: not hostvars['CA_PEM_STAT_HOLDER']['ca_pem_stat'].exists
@@ -25,6 +33,10 @@
 
 - name: Import CA certificate to VPN server
   hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Copy CA certificate to VPN server
       become: yes

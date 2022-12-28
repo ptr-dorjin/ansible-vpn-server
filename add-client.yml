@@ -8,6 +8,8 @@
   hosts: vpn_server
   vars_files:
     - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Retrieve the status of client VPN config
       stat:

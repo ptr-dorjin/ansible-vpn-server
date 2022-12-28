@@ -64,7 +64,7 @@
               - sshd_config | regex_search('\nX11Forwarding no')
               - sshd_config | regex_search('\nAllowUsers {{ sshd_allowed_users }}')
 
-    - name: Assert ufw config
+    - name: Assert ufw config - SSH port is open
       block:
         - name: Retrieve output of ufw status
           become: yes
@@ -72,11 +72,11 @@
           register: ufw_status
           changed_when: false
 
-        - name: Assert ufw status contains OpenSSH
+        - name: Assert ufw status contains SSH port
           assert:
             that:
-              - ufw_status.stdout | regex_search('OpenSSH +ALLOW')
-              - ufw_status.stdout | regex_search('OpenSSH \(v6\) +ALLOW')
+              - ufw_status.stdout | regex_search('{{ ssh_port }}/tcp +ALLOW')
+              - ufw_status.stdout | regex_search('{{ ssh_port }}/tcp \(v6\) +ALLOW')
 
     - name: Assert EasyRSA files are symlinked
       block:
@@ -125,6 +125,20 @@
     - ../../vars/vars-vpn.yml
 
   tasks:
+    - name: Assert ufw config - VPN port is open
+      block:
+        - name: Retrieve output of ufw status
+          become: yes
+          command: ufw status
+          register: ufw_status
+          changed_when: false
+
+        - name: Assert ufw status contains VPN port
+          assert:
+            that:
+              - ufw_status.stdout | regex_search('{{ vpn_port }}/{{ vpn_proto }} +ALLOW')
+              - ufw_status.stdout | regex_search('{{ vpn_port }}/{{ vpn_proto }} \(v6\) +ALLOW')
+
     - name: Assert packages
       block:
         - name: Gather package facts

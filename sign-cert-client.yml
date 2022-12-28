@@ -4,6 +4,8 @@
   hosts: vpn_server
   vars_files:
     - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Retrieve client cert status
       stat:
@@ -22,6 +24,7 @@
     - vars/main-vars.yml
   vars:
     - need_to_run: "{{ not client_cert.stat.exists }}"
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Generate client Certificate Signing Request (CSR)
       when: need_to_run
@@ -50,6 +53,7 @@
     - vars/main-vars.yml
   vars:
     - need_to_run: "{{ not hostvars['CLIENT_CERT_STAT_HOLDER']['client_cert_stat'].exists }}"
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Copy client CSR to CA server
       when: need_to_run
@@ -87,6 +91,7 @@
     - vars/main-vars.yml
   vars:
     - need_to_run: "{{ not client_cert.stat.exists }}"
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Copy signed client cert to VPN server client-configs/keys directory
       when: need_to_run

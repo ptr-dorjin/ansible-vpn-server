@@ -3,6 +3,8 @@
   hosts: ca_server
   vars_files:
     - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Retrieve client cert status
       stat:
@@ -21,6 +23,7 @@
     - vars/main-vars.yml
   vars:
     - need_to_run: "{{ client_cert.stat.exists }}"
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Revoke client certificate
       when: need_to_run
@@ -44,9 +47,11 @@
 - name: Update CRL on VPN server
   hosts: vpn_server
   vars_files:
+    - vars/main-vars.yml
     - vars/vars-vpn.yml
   vars:
     - need_to_run: "{{ hostvars['CLIENT_CERT_STAT_HOLDER']['client_cert_stat'].exists }}"
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Copy CRL to VPN server
       when: need_to_run

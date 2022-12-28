@@ -1,6 +1,10 @@
 ---
 - name: Retrieve VPN server CA status
   hosts: vpn_server
+  vars_files:
+    - vars/main-vars.yml
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Retrieve OpenVPN cryptographic material
       stat:
@@ -19,11 +23,12 @@
   vars_files:
     - vars/main-vars.yml
     - vars/vars-vpn.yml
+  vars:
+    - need_to_run: "{{ not ta_key.stat.exists }}"
+    - ansible_port: "{{ ssh_port }}"
   pre_tasks:
     - name: Override vars for tests
       import_tasks: tasks/override-vars-for-tests.yml
-  vars:
-    - need_to_run: "{{ not ta_key.stat.exists }}"
   tasks:
     - name: Generate server private key and Certificate Signing Request (CSR)
       when: need_to_run
@@ -51,9 +56,11 @@
 - name: Sign server CSR
   hosts: ca_server
   vars_files:
+    - vars/main-vars.yml
     - vars/vars-vpn.yml
   vars:
     - need_to_run: "{{ not hostvars['TA_KEY_STAT_HOLDER']['ta_key_stat'].exists }}"
+    - ansible_port: "{{ ssh_port }}"
   tasks:
     - name: Copy VPN serer CSR to CA server
       when: need_to_run
@@ -96,6 +103,7 @@
     - vars/vars-vpn.yml
   vars:
     - need_to_run: "{{ not ta_key.stat.exists }}"
+    - ansible_port: "{{ ssh_port }}"
   pre_tasks:
     - name: Override vars for tests
       import_tasks: tasks/override-vars-for-tests.yml

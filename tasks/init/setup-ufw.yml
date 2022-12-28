@@ -15,5 +15,6 @@
   become: yes
   community.general.ufw:
     rule: allow
-    name: OpenSSH
+    proto: tcp
+    port: "{{ ssh_port }}"
     state: enabled

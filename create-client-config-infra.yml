@@ -5,7 +5,8 @@
   vars_files:
     - vars/main-vars.yml
     - vars/vars-vpn.yml
-
+  vars:
+    - ansible_port: "{{ ssh_port }}"
   pre_tasks:
     - name: Override vars for tests
       import_tasks: tasks/override-vars-for-tests.yml
