@@ -20,7 +20,8 @@
     - vars/main-vars.yml
     - vars/vars-vpn.yml
   pre_tasks:
-    - import_tasks: tasks/override-vars-for-tests.yml
+    - name: Override vars for tests
+      import_tasks: tasks/override-vars-for-tests.yml
   vars:
     - need_to_run: "{{ not ta_key.stat.exists }}"
   tasks:
@@ -96,7 +97,8 @@
   vars:
     - need_to_run: "{{ not ta_key.stat.exists }}"
   pre_tasks:
-    - import_tasks: tasks/override-vars-for-tests.yml
+    - name: Override vars for tests
+      import_tasks: tasks/override-vars-for-tests.yml
   tasks:
     - name: Copy CA cert and signed VPN cert to VPN server
       when: need_to_run

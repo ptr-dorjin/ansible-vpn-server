@@ -8,16 +8,21 @@
     - vars/vars-ca.yml
 
   pre_tasks:
-    - import_tasks: tasks/override-vars-for-tests.yml
-    - import_tasks: tasks/init/common-tasks.yml
+    - name: Override vars for tests
+      import_tasks: tasks/override-vars-for-tests.yml
+    - name: Common tasks
+      import_tasks: tasks/init/common-tasks.yml
 
   roles:
     - role: geerlingguy.security
 
   tasks:
-    - import_tasks: tasks/init/setup-ufw.yml
-    - import_tasks: tasks/init/setup-easy-rsa.yml
-    - import_tasks: tasks/init/ca-server-init-tasks.yml
+    - name: Set up UFW
+      import_tasks: tasks/init/setup-ufw.yml
+    - name: Set up EasyRSA
+      import_tasks: tasks/init/setup-easy-rsa.yml
+    - name: CA Server init tasks
+      import_tasks: tasks/init/ca-server-init-tasks.yml
 
 
 - name: Set up VPN server
@@ -29,13 +34,18 @@
     - vars/vars-vpn.yml
 
   pre_tasks:
-    - import_tasks: tasks/override-vars-for-tests.yml
-    - import_tasks: tasks/init/common-tasks.yml
+    - name: Override vars for tests
+      import_tasks: tasks/override-vars-for-tests.yml
+    - name: Common tasks
+      import_tasks: tasks/init/common-tasks.yml
 
   roles:
     - role: geerlingguy.security
 
   tasks:
-    - import_tasks: tasks/init/setup-ufw.yml
-    - import_tasks: tasks/init/setup-easy-rsa.yml
-    - import_tasks: tasks/init/vpn-server-init-tasks.yml
+    - name: Set up UFW
+      import_tasks: tasks/init/setup-ufw.yml
+    - name: Set up EasyRSA
+      import_tasks: tasks/init/setup-easy-rsa.yml
+    - name: VPN Server init tasks
+      import_tasks: tasks/init/vpn-server-init-tasks.yml

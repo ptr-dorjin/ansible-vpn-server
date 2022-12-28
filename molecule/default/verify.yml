@@ -2,6 +2,9 @@
 - name: Verify all
   hosts: all
 
+  vars_files:
+    - ../../vars/main-vars.yml
+
   vars:
     - sshd_config_path: /etc/ssh/sshd_config
 
@@ -44,18 +47,22 @@
           set_fact:
             sshd_config: "{{ sshd_config_base64.content | b64decode }}"
 
+        - name: Define allowed users
+          set_fact:
+            sshd_allowed_users: "{{ security_ssh_allowed_users | join(' ') }}"
+
         - name: Assert sshd_config is set up correctly
           assert:
             that:
               - sshd_config | regex_search('\nPasswordAuthentication no')
               - sshd_config | regex_search('\nPermitRootLogin no')
-              - sshd_config | regex_search('\nPort 22')
+              - sshd_config | regex_search('\nPort {{ ssh_port }}')
               - sshd_config | regex_search('\nUseDNS no')
               - sshd_config | regex_search('\nPermitEmptyPasswords no')
               - sshd_config | regex_search('\nChallengeResponseAuthentication no')
               - sshd_config | regex_search('\nGSSAPIAuthentication no')
               - sshd_config | regex_search('\nX11Forwarding no')
-              - sshd_config | regex_search('\nAllowUsers your_user')
+              - sshd_config | regex_search('\nAllowUsers {{ sshd_allowed_users }}')
 
     - name: Assert ufw config
       block:
