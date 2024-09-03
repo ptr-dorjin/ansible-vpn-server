@@ -5,7 +5,7 @@ VAGRANTFILE_API_VERSION = "2"
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   # General Vagrant VM configuration
-  config.vm.box = "geerlingguy/ubuntu2004"
+  config.vm.box = "ubuntu/jammy64"
   config.ssh.insert_key = true
   config.vm.synced_folder ".", "/vagrant", disabled: true
   config.vm.provider :virtualbox do |v|

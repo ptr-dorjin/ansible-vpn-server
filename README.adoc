@@ -18,7 +18,7 @@ ansible-galaxy install -r requirements.yml
 
 == Prerequisite
 
-- Launch two VMs in the cloud with Ubuntu 20.04 LTS:
+- Launch two VMs in the cloud with Ubuntu 24.04 LTS:
 ** CA server - can have dynamic/ephemeral public IP address. CA server should be up and running when using this playbook; other times it can be stopped.
 *** Open inbound port TCP 22 (for initial setup) plus any non-default port that you want to use instead of 22. For non-default port, change `ssh_port` value in `vars/main-vars.yml`.
 ** VPN server - should have static/allocated public IP address.
@@ -104,7 +104,7 @@ ansible-playbook remove-client.yml
 
 .Install Molecule
 ----
-pip install yamllint ansible-lint flake8 molecule[docker]
+pip install yamllint ansible-lint flake8 molecule-plugins[docker]
 ----
 
 .Test
@@ -123,22 +123,26 @@ If molecule fails due to `systemctl` error `Failed to connect to bus: No such fi
 
 == Testing with Vagrant
 
-.Install Vagrant
+. Install Virtualbox
++
 ----
 sudo apt install virtualbox
-sudo apt install vagrant
 ----
 
-Specify which SSH key on localhost should be used to SSH on vagrant VMs in `ssh_key_for_vagrant` value in `vagrant/vagrant-provisioning.yml`
+. Install Vagrant by following steps from https://developer.hashicorp.com/vagrant/install
 
-.Initialize VMs
+. Specify which SSH key on localhost should be used to SSH on vagrant VMs in `ssh_key_for_vagrant` value in `vagrant/vagrant-provisioning.yml`
+
+. Initialize VMs
++
 ----
 vagrant up
 vagrant provision # run only Ansible playbook, if VMs are already created
 vagrant destroy # to delete the VMs
 ----
 
-.Set IP address of CA/VPN server and the user in `inventory.ini` file:
+. Set IP address of CA/VPN server and the user in `inventory.ini` file:
++
 ----
 [ca_server]
 192.168.56.2 ansible_user=vagrant
@@ -147,22 +151,26 @@ vagrant destroy # to delete the VMs
 192.168.56.3 ansible_user=vagrant
 ----
 
-.Finish setup:
+. Finish setup:
++
 ----
 ansible-playbook vpn-post-provision.yml
 ----
 
-.Add a new client
+. Add a new client
++
 ----
 ansible-playbook add-client.yml --extra-vars client_name=vagrant-vpn-client
 ----
 
-.Remove client
+. Remove client
++
 ----
 ansible-playbook remove-client.yml --extra-vars client_name=vagrant-vpn-client
 ----
 
-.SSH on VMs from the host system
+. SSH on VMs from the host system
++
 ----
 ssh vagrant@192.168.56.2
 ssh vagrant@192.168.56.3

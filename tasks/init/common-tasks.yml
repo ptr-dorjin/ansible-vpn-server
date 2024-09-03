@@ -5,3 +5,10 @@
     update_cache: true
     cache_valid_time: 3600
   when: ansible_os_family == 'Debian'
+
+- name: Ensure SSH daemon is running and enabled.
+  service:
+    name: ssh
+    state: started
+    enabled: true
+  when: ansible_os_family == 'Debian'
